@@ -29,8 +29,10 @@ KUBERNETES_VERSION=${1:-v1.21}
 	trap "minikube delete" EXIT
 }
 
-eval $(minikube -p minikube docker-env)
-docker build -f ./Dockerfile -t wave-local:local .
+# Build directly inside the minikube node so this works with any container
+# runtime (docker-env only supports the docker runtime, and minikube defaults
+# to containerd since v1.39.0).
+minikube -p minikube image build -f ./Dockerfile -t wave-local:local .
 
 echo Installing wave...
 if [ "$1" = "production" ]; then
