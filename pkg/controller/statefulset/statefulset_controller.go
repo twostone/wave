@@ -29,20 +29,23 @@ import (
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=,resources=configmaps,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=,resources=secrets,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=,resources=pods,verbs=list;watch;delete
 // +kubebuilder:rbac:groups=,resources=events,verbs=create;update;patch
 
 // Add creates a new StatefulSet Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, updateRate float64, updateBurst int) error {
-	r := newReconciler(mgr, updateRate, updateBurst)
+func Add(mgr manager.Manager, updateRate float64, updateBurst int, disableGatedPodDeletion bool) error {
+	r := newReconciler(mgr, updateRate, updateBurst, disableGatedPodDeletion)
 	return add(mgr, r, r.handler)
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, updateRate float64, updateBurst int) *ReconcileStatefulSet {
+func newReconciler(mgr manager.Manager, updateRate float64, updateBurst int, disableGatedPodDeletion bool) *ReconcileStatefulSet {
+	handler := core.NewHandler[*appsv1.StatefulSet](mgr.GetClient(), mgr.GetEventRecorderFor("wave"), updateRate, updateBurst)
+	handler.DisableGatedPodDeletion = disableGatedPodDeletion
 	return &ReconcileStatefulSet{
 		scheme:  mgr.GetScheme(),
-		handler: core.NewHandler[*appsv1.StatefulSet](mgr.GetClient(), mgr.GetEventRecorderFor("wave"), updateRate, updateBurst),
+		handler: handler,
 	}
 }
 

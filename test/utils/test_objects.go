@@ -604,3 +604,52 @@ var ExampleSecret6 = &corev1.Secret{
 		"key3": "example6:key3",
 	},
 }
+
+// PodSpecWithSecret1 returns a pod spec which references Secret example1 as its
+// only child, so tests do not have to create all the example ConfigMaps and Secrets
+func PodSpecWithSecret1() corev1.PodSpec {
+	return corev1.PodSpec{
+		SchedulerName: "default-scheduler",
+		Volumes: []corev1.Volume{
+			{
+				Name: "secret1",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: "example1",
+					},
+				},
+			},
+		},
+		Containers: []corev1.Container{
+			{
+				Name:  "container1",
+				Image: "container1",
+			},
+		},
+	}
+}
+
+// MakePod builds a Pod controlled by the given apps/v1 owner, as its controller
+// would create it from a pod template using the given scheduler
+func MakePod(name string, owner metav1.Object, ownerKind string, schedulerName string) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: owner.GetNamespace(),
+			Labels:    labels,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               ownerKind,
+					Name:               owner.GetName(),
+					UID:                owner.GetUID(),
+					Controller:         &trueValue,
+					BlockOwnerDeletion: &trueValue,
+				},
+			},
+		},
+		Spec: PodSpecWithSecret1(),
+	}
+	pod.Spec.SchedulerName = schedulerName
+	return pod
+}

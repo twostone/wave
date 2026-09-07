@@ -188,6 +188,18 @@ You can limit Wave to only watch certain namespaces:
 --namespaces=your-namespace,other-namespace
 ```
 
+#### Gated Pod Deletion
+
+When the [webhooks](#webhooks) are enabled, Wave deletes the Pods of a
+StatefulSet that are stuck with its placeholder scheduler once the required
+ConfigMaps/Secrets appear. To keep those Pods instead, set:
+
+```
+--disable-gated-pod-deletion=true
+```
+
+The StatefulSet then stays in `Pending` until the Pods are deleted manually.
+
 ## Quick Start
 
 If you haven't yet got Wave running on your cluster, see
@@ -316,6 +328,17 @@ required Secrets or ConfigMaps to reduce stress on the cluster.
 Pods will stay in state `Pending` instead of `ContainerCreating`.
 When required Secrets/ConfigMaps have been created Wave will restore the
 scheduler and add the config hash without requiring any restarts.
+
+A Pod's `spec.schedulerName` is immutable, so a Pod that was already created
+while scheduling was disabled stays `Pending` forever. Deployments and
+DaemonSets replace such Pods themselves, but a StatefulSet using
+`podManagementPolicy: OrderedReady` waits for them to become ready and never
+rolls out the restored pod template. Wave therefore deletes them once scheduling
+is re-enabled, so that the StatefulSet controller recreates them from the
+current revision. Only Pods that are owned by the StatefulSet, still use Wave's
+placeholder scheduler and have not been scheduled to a node are deleted, and
+Wave emits a `GatedPodDeleted` event for each of them. This can be turned off
+with [`--disable-gated-pod-deletion`](#gated-pod-deletion).
 
 ## Communication
 

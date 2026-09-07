@@ -138,5 +138,61 @@ while ! kubectl get cm test-completed; do
   fi
 done
 
+# Without the webhooks scheduling is never disabled, so there is nothing to recover from
+if [ "$1" = "production" ]; then
+	echo Creating a StatefulSet whose Secret does not exist yet...
+	kubectl create -f - <<'EOF'
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-sts
+  annotations:
+    wave.pusher.com/update-on-config-change: "true"
+spec:
+  serviceName: test-sts
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-sts
+  template:
+    metadata:
+      labels:
+        app: test-sts
+    spec:
+      containers:
+      - name: test
+        image: nixery.dev/shell/kubectl
+        command: ["/bin/sh", "-ec", "sleep infinity"]
+        volumeMounts:
+        - name: secret
+          mountPath: /etc/secret
+      volumes:
+      - name: secret
+        secret:
+          secretName: test-sts
+EOF
+
+	# The webhook holds the pod back with an invalid scheduler. Its
+	# spec.schedulerName is immutable, so wave has to delete the pod once the
+	# Secret exists, otherwise the StatefulSet never becomes ready.
+	kubectl wait --for=create pod/test-sts-0 --timeout=60s
+	kubectl create secret generic test-sts --from-literal=test=init
+
+	ctr=0
+	while [ "$(kubectl get statefulset test-sts -o jsonpath='{.status.readyReplicas}')" != "1" ]; do
+	  echo Waiting for the StatefulSet to become ready
+	  sleep 10
+	  ctr=$((ctr+1))
+	  if [ "$ctr" -gt 30 ]; then
+		echo "StatefulSet did not recover after its Secret was created"
+		kubectl get pods -o wide
+		kubectl get pod test-sts-0 -o jsonpath='{.spec.schedulerName}'
+		kubectl describe statefulset test-sts
+		exit 1
+	  fi
+	done
+fi
+
 echo Test passed
 exit 0

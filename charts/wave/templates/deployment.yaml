@@ -44,6 +44,9 @@ spec:
           {{- if .Values.webhooks.enabled }}
             - --enable-webhooks=true
           {{- end }}
+          {{- if .Values.disableGatedPodDeletion }}
+            - --disable-gated-pod-deletion=true
+          {{- end }}
           volumeMounts:
           {{- if .Values.webhooks.enabled }}
             - mountPath: /tmp/k8s-webhook-server/serving-certs

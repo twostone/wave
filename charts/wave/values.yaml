@@ -50,6 +50,10 @@ serviceAccount:
 webhooks:
   enabled: false
 
+# Keep pods of a StatefulSet which are stuck with the placeholder scheduler that
+# the webhooks use to hold back pods with missing ConfigMaps/Secrets
+disableGatedPodDeletion: false
+
 # Period for reconciliation
 # syncPeriod: 5m
 

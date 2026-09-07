@@ -52,6 +52,7 @@ var (
 	showVersion             = flag.Bool("version", false, "Show version and exit")
 	enableWebhooks          = flag.Bool("enable-webhooks", false, "Enable webhooks")
 	namespaces              = flag.String("namespaces", "", "Comma-separated list of namespaces to watch. Defaults to all namespaces.")
+	disableGatedPodDeletion = flag.Bool("disable-gated-pod-deletion", false, "Do not delete pods of a StatefulSet which are stuck with the placeholder scheduler after scheduling has been re-enabled")
 	setupLog                = ctrl.Log.WithName("setup")
 )
 
@@ -112,8 +113,9 @@ func main() {
 	// Setup all Controllers
 	setupLog.Info("Setting up controller")
 	controllerConfig := controller.Config{
-		UpdateRate:  *updateRate,
-		UpdateBurst: *updateBurst,
+		UpdateRate:              *updateRate,
+		UpdateBurst:             *updateBurst,
+		DisableGatedPodDeletion: *disableGatedPodDeletion,
 	}
 	if err := controller.AddToManager(mgr, controllerConfig); err != nil {
 		setupLog.Error(err, "unable to register controllers to the manager")

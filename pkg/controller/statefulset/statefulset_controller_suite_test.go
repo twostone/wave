@@ -137,7 +137,7 @@ var _ = BeforeSuite(func() {
 	m = utils.Matcher{Client: c}
 
 	var recFn reconcile.Reconciler
-	r := newReconciler(mgr, math.Inf(1), 1)
+	r := newReconciler(mgr, math.Inf(1), 1, false)
 	recFn, requestsStart, requests = core.SetupControllerTestReconcile(r)
 	Expect(add(mgr, recFn, r.handler)).NotTo(HaveOccurred())
 

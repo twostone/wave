@@ -19,6 +19,12 @@ rules:
   - create
   - patch
   - update
+- resources:
+  - pods
+  verbs:
+  - delete
+  - list
+  - watch
 - apiGroups:
   - apps
   resources:
