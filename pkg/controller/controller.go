@@ -24,6 +24,10 @@ import (
 type Config struct {
 	UpdateRate  float64 // updates per second
 	UpdateBurst int     // maximum burst size
+
+	// DisableGatedPodDeletion keeps Pods which are stuck with Wave's placeholder
+	// scheduler instead of deleting them
+	DisableGatedPodDeletion bool
 }
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager

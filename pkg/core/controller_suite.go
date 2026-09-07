@@ -75,20 +75,6 @@ func ControllerTestSuite[I InstanceType](
 
 	const modified = "modified"
 
-	var waitForInstanceReconciled = func(obj Object, times int) {
-		request := reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      obj.GetName(),
-				Namespace: obj.GetNamespace(),
-			},
-		}
-		for range times {
-			// wait for reconcile for creating the DaemonSet
-			Eventually(*requestsStart, timeout).Should(Receive(Equal(request)))
-			Eventually(*requests, timeout).Should(Receive(Equal(request)))
-		}
-	}
-
 	var consistentlyInstanceNotReconciled = func(obj Object) {
 		request := reconcile.Request{
 			NamespacedName: types.NamespacedName{
@@ -156,6 +142,7 @@ func ControllerTestSuite[I InstanceType](
 			&appsv1.DaemonSetList{},
 			&appsv1.DeploymentList{},
 			&appsv1.StatefulSetList{},
+			&corev1.PodList{},
 			&corev1.ConfigMapList{},
 			&corev1.SecretList{},
 			&corev1.EventList{},
@@ -175,7 +162,7 @@ func ControllerTestSuite[I InstanceType](
 			// Create a instance and wait for it to be reconciled
 			expectNoReconciles()
 			m.Create(instance).Should(Succeed())
-			waitForInstanceReconciled(instance, 1)
+			utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 		})
 
 		Context("And it has the required annotation", func() {
@@ -191,7 +178,7 @@ func ControllerTestSuite[I InstanceType](
 				}
 				expectNoReconciles()
 				m.Update(instance, addAnnotation).Should(Succeed())
-				waitForInstanceReconciled(instance, 1)
+				utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 
 				// Get the updated instance
 				m.Get(instance, timeout).Should(Succeed())
@@ -236,7 +223,7 @@ func ControllerTestSuite[I InstanceType](
 					podTemplate.Spec.Containers = []corev1.Container{podTemplate.Spec.Containers[0]}
 					SetPodTemplate(instance, podTemplate)
 					Expect(m.Client.Update(context.TODO(), instance)).Should(Succeed())
-					waitForInstanceReconciled(instance, 1)
+					utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 
 					// Get the updated instance
 					m.Get(instance, timeout).Should(Succeed())
@@ -279,7 +266,7 @@ func ControllerTestSuite[I InstanceType](
 						}
 						expectNoReconciles()
 						m.Update(cm1, modifyCM).Should(Succeed())
-						waitForInstanceReconciled(instance, 2) // Reschedules once since we update the hash
+						utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Reschedules once since we update the hash
 
 						// Get the updated instance
 						m.Get(instance, timeout).Should(Succeed())
@@ -301,7 +288,7 @@ func ControllerTestSuite[I InstanceType](
 						}
 						expectNoReconciles()
 						m.Update(cm2, modifyCM).Should(Succeed())
-						waitForInstanceReconciled(instance, 2) // Reschedules once since we update the hash
+						utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Reschedules once since we update the hash
 
 						// Get the updated instance
 						m.Get(instance, timeout).Should(Succeed())
@@ -326,7 +313,7 @@ func ControllerTestSuite[I InstanceType](
 						}
 						expectNoReconciles()
 						m.Update(s1, modifyS).Should(Succeed())
-						waitForInstanceReconciled(instance, 2) // Reschedules once since we update the hash
+						utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Reschedules once since we update the hash
 
 						// Get the updated instance
 						m.Get(instance, timeout).Should(Succeed())
@@ -351,7 +338,7 @@ func ControllerTestSuite[I InstanceType](
 						}
 						expectNoReconciles()
 						m.Update(s2, modifyS).Should(Succeed())
-						waitForInstanceReconciled(instance, 2) // Reschedules once since we update the hash
+						utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Reschedules once since we update the hash
 
 						// Get the updated instance
 						m.Get(instance, timeout).Should(Succeed())
@@ -373,7 +360,7 @@ func ControllerTestSuite[I InstanceType](
 					}
 					expectNoReconciles()
 					m.Update(instance, removeAnnotations).Should(Succeed())
-					waitForInstanceReconciled(instance, 1)
+					utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 					m.Get(instance).Should(Succeed())
 					Eventually(instance, timeout).ShouldNot(utils.WithAnnotations(HaveKey(RequiredAnnotation)))
 				})
@@ -401,7 +388,7 @@ func ControllerTestSuite[I InstanceType](
 					Eventually(instance, timeout).Should(utils.WithPodTemplateAnnotations(HaveKey(ConfigHashAnnotation)))
 					expectNoReconciles()
 					m.Delete(instance).Should(Succeed())
-					waitForInstanceReconciled(instance, 1)
+					utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 				})
 				It("Not longer exists", func() {
 					m.Get(instance).Should(MatchError(MatchRegexp(`not found`)))
@@ -455,11 +442,14 @@ func ControllerTestSuite[I InstanceType](
 			}
 			annotations[RequiredAnnotation] = "true"
 			instance.SetAnnotations(annotations)
+		})
 
+		// JustBeforeEach so that nested contexts can still adjust the instance
+		JustBeforeEach(func() {
 			// Create a instance and wait for it to be reconciled
 			expectNoReconciles()
 			m.Create(instance).Should(Succeed())
-			waitForInstanceReconciled(instance, 1)
+			utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 		})
 
 		It("Has scheduling disabled", func() {
@@ -469,17 +459,78 @@ func ControllerTestSuite[I InstanceType](
 		})
 
 		Context("And the missing child is created", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				expectNoReconciles()
 				cm1 = utils.ExampleConfigMap1.DeepCopy()
 				m.Create(cm1).Should(Succeed())
-				waitForInstanceReconciled(instance, 2) // Two since updating the scheduler self-triggers
+				utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Two since updating the scheduler self-triggers
 			})
 
 			It("Has scheduling renabled", func() {
 				m.Get(instance, timeout).Should(Succeed())
 				Expect(GetPodTemplate(instance).Spec.SchedulerName).To(Equal("default-scheduler"))
 				Expect(instance.GetAnnotations()).NotTo(HaveKey(SchedulingDisabledAnnotation))
+			})
+		})
+
+		Context("And pods were created while scheduling was disabled", func() {
+			var stuckPod *corev1.Pod
+			var scheduledPod *corev1.Pod
+			var unownedPod *corev1.Pod
+
+			JustBeforeEach(func() {
+				m.Get(instance, timeout).Should(Succeed())
+
+				// A pod as the controller creates it from the gated revision
+				stuckPod = utils.MakePod("stuck", instance, kindOf(instance), SchedulingDisabledSchedulerName)
+				// A gated pod which a scheduler has placed already
+				scheduledPod = utils.MakePod("stuck-scheduled", instance, kindOf(instance), SchedulingDisabledSchedulerName)
+				scheduledPod.Spec.NodeName = "node1"
+				// A gated pod which belongs to somebody else
+				unownedPod = utils.MakePod("stuck-unowned", instance, kindOf(instance), SchedulingDisabledSchedulerName)
+				unownedPod.OwnerReferences = nil
+
+				for _, pod := range []*corev1.Pod{stuckPod, scheduledPod, unownedPod} {
+					m.Create(pod).Should(Succeed())
+					m.Get(pod, timeout).Should(Succeed())
+				}
+
+				// Creating the missing child re-enables scheduling
+				expectNoReconciles()
+				cm1 = utils.ExampleConfigMap1.DeepCopy()
+				m.Create(cm1).Should(Succeed())
+				utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Two since updating the scheduler self-triggers
+			})
+
+			It("Keeps pods which are scheduled or not owned by the instance", func() {
+				m.Get(scheduledPod).Should(Succeed())
+				Expect(scheduledPod.GetDeletionTimestamp()).To(BeNil())
+				m.Get(unownedPod).Should(Succeed())
+				Expect(unownedPod.GetDeletionTimestamp()).To(BeNil())
+			})
+
+			It("Deletes the stuck pod of a StatefulSet", func() {
+				if _, isStatefulSet := any(instance).(*appsv1.StatefulSet); !isStatefulSet {
+					// Deployments and DaemonSets replace the stuck pods themselves
+					m.Get(stuckPod).Should(Succeed())
+					Expect(stuckPod.GetDeletionTimestamp()).To(BeNil())
+					return
+				}
+				m.Get(stuckPod, timeout).Should(MatchError(MatchRegexp(`not found`)))
+			})
+
+			Context("And the controller replaces the stuck pods itself", func() {
+				BeforeEach(func() {
+					// Only a StatefulSet needs help, and only with OrderedReady
+					if statefulSet, ok := any(instance).(*appsv1.StatefulSet); ok {
+						statefulSet.Spec.PodManagementPolicy = appsv1.ParallelPodManagement
+					}
+				})
+
+				It("Keeps the stuck pod", func() {
+					m.Get(stuckPod).Should(Succeed())
+					Expect(stuckPod.GetDeletionTimestamp()).To(BeNil())
+				})
 			})
 		})
 
@@ -499,7 +550,7 @@ func ControllerTestSuite[I InstanceType](
 			// Create a instance and wait for it to be reconciled
 			expectNoReconciles()
 			m.Create(instance).Should(Succeed())
-			waitForInstanceReconciled(instance, 1)
+			utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 		})
 
 		It("Has scheduling disabled", func() {
@@ -513,7 +564,7 @@ func ControllerTestSuite[I InstanceType](
 				expectNoReconciles()
 				cm6Alt := utils.ExampleConfigMap6WithoutKey3.DeepCopy()
 				m.Create(cm6Alt).Should(Succeed())
-				waitForInstanceReconciled(instance, 1)
+				utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 1)
 			})
 			It("Has Scheduling still disabled", func() {
 				m.Get(instance, timeout).Should(Succeed())
@@ -527,7 +578,7 @@ func ControllerTestSuite[I InstanceType](
 					cm6Copy := utils.ExampleConfigMap6.DeepCopy()
 					cm6.Data = cm6Copy.Data
 					Expect(m.Client.Update(context.TODO(), cm6)).Should(Succeed())
-					waitForInstanceReconciled(instance, 2) // Reschedules once since we update the hash + reenables scheduling
+					utils.ConsumeReconciles(*requestsStart, *requests, instance, timeout, 2) // Reschedules once since we update the hash + reenables scheduling
 				})
 
 				It("Has scheduling renabled", func() {

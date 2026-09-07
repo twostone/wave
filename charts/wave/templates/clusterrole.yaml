@@ -26,6 +26,14 @@ rules:
       - update
       - patch
   - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+      - watch
+      - delete
+  - apiGroups:
       - apps
     resources:
       - deployments

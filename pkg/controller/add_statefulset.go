@@ -24,6 +24,6 @@ import (
 func init() {
 	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
 	AddToManagerFuncs = append(AddToManagerFuncs, func(mgr manager.Manager, cfg Config) error {
-		return statefulset.Add(mgr, cfg.UpdateRate, cfg.UpdateBurst)
+		return statefulset.Add(mgr, cfg.UpdateRate, cfg.UpdateBurst, cfg.DisableGatedPodDeletion)
 	})
 }

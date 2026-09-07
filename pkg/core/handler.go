@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"golang.org/x/time/rate"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +39,10 @@ type Handler[I InstanceType] struct {
 	watchedConfigmaps WatcherList
 	watchedSecrets    WatcherList
 	updateThrottler   *UpdateThrottler
+
+	// DisableGatedPodDeletion keeps Pods which are stuck with Wave's placeholder
+	// scheduler instead of deleting them
+	DisableGatedPodDeletion bool
 }
 
 // NewHandler constructs a new instance of Handler
@@ -144,6 +149,23 @@ func (h *Handler[I]) handlePodController(ctx context.Context, instance I) (recon
 			return reconcile.Result{}, fmt.Errorf("error updating instance %s/%s: %v", instance.GetNamespace(), instance.GetName(), err)
 		}
 	}
+
+	// Restoring the scheduler above only changed the pod template. A Pod's
+	// spec.schedulerName is immutable, so Pods that were created from the
+	// disabled template stay unschedulable and have to be deleted to be
+	// recreated with the restored scheduler.
+	if schedulingChange && !h.DisableGatedPodDeletion {
+		// Deployments, DaemonSets and StatefulSets using podManagementPolicy
+		// Parallel replace those Pods themselves. An unset policy defaults to
+		// OrderedReady.
+		statefulSet, isStatefulSet := any(instance).(*appsv1.StatefulSet)
+		if isStatefulSet && statefulSet.Spec.PodManagementPolicy != appsv1.ParallelPodManagement {
+			if err := h.deleteStuckUnschedulablePods(ctx, statefulSet); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
 	return reconcile.Result{}, nil
 }
 
